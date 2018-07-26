@@ -1,9 +1,28 @@
 #!/bin/bash
 
 # configurable
-CROSSDATA_SERVER="https://crossdata-1.marathon.mesos:10082"
-#CURL_VERBOSE_OPTIONS=" -s "
-CURL_VERBOSE_OPTIONS=" -v "
+LOCAL="true"
+TLS="false"
+VERBOSE="false"
+
+CROSSDATA_SERVER_EOS="https://crossdata-1.marathon.mesos:$PORT0"
+CROSSDATA_SERVER_LOCAL="http://localhost:13422"
+
+if [ "true" = "$LOCAL" ]; then
+  CROSSDATA_SERVER=$CROSSDATA_SERVER_LOCAL
+else
+  CROSSDATA_SERVER=$CROSSDATA_SERVER_EOS
+fi
+
+if [ "true" = "$VERBOSE" ]; then
+  CURL_VERBOSE_OPTIONS=" -v "
+else
+  CURL_VERBOSE_OPTIONS=" -s "
+fi
+
+echo "LOCAL: $LOCAL"
+echo "VERBOSE: $VERBOSE"
+echo "CROSSDATA_SERVER: $CROSSDATA_SERVER"
 
 # ---------------------
 # global
@@ -35,7 +54,11 @@ fi
 function getsession()
 {
   inc_query_uuid                                                                                                                     
-  curl $CURL_VERBOSE_OPTIONS --cacert certs/ca-bundle.pem --cert certs/crossdata-1.pem --key certs/crossdata-1.key -H "Content-Type: application/json" -X POST -d '{"command":"OpenSessionCommand","details":{"user":"crossdata-1"}}' $CROSSDATA_SERVER/query/$QUERY_UUID | jq -r -cMS ".session.id | .[\"\$uuid\"]"
+  if [ "$TLS" = "true" ]; then
+    curl $CURL_VERBOSE_OPTIONS --cacert certs/ca-bundle.pem --cert certs/crossdata-1.pem --key certs/crossdata-1.key -H "Content-Type: application/json" -X POST -d '{"command":"OpenSessionCommand","details":{"user":"crossdata-1"}}' $CROSSDATA_SERVER/query/$QUERY_UUID | jq -r -cMS ".session.id | .[\"\$uuid\"]"
+  else
+    curl $CURL_VERBOSE_OPTIONS -H "Content-Type: application/json" -X POST -d '{"command":"OpenSessionCommand","details":{"user":"crossdata-1"}}' $CROSSDATA_SERVER/query/$QUERY_UUID | jq -r -cMS ".session.id | .[\"\$uuid\"]"
+  fi
 }
 # execute crossdata query
 function executequery()
@@ -45,7 +68,15 @@ function executequery()
   echo "Executing query: $QUERY"                                                                                                  
   # Execute Query
   inc_query_uuid                                                                                                                     
-  query_res=$(curl $CURL_VERBOSE_OPTIONS --cacert certs/ca-bundle.pem --cert certs/crossdata-1.pem --key certs/crossdata-1.key -H "Content-Type: application/json" -X POST -d '{"command":"SQLCommand","details":{"sql": "'"$QUERY"'","session":{"id":{"$uuid":"'$sess_id'"}},"queryId":{"$uuid":"'$QUERY_UUID'"},"flattenResults":false,"packageSize":1}}' $CROSSDATA_SERVER/query/$QUERY_UUID)
+  if [ "$TLS" = "true" ]; then
+    query_res=$(curl $CURL_VERBOSE_OPTIONS --cacert certs/ca-bundle.pem --cert certs/crossdata-1.pem --key certs/crossdata-1.key -H "Content-Type: application/json" -X POST -d '{"command":"SQLCommand","details":{"sql": "'"$QUERY"'","session":{"id":{"$uuid":"'$sess_id'"}},"queryId":{"$uuid":"'$QUERY_UUID'"},"flattenResults":false,"packageSize":1}}' $CROSSDATA_SERVER/query/$QUERY_UUID)
+  else
+    query_res=$(curl $CURL_VERBOSE_OPTIONS -H "Content-Type: application/json" -X POST -d '{"command":"SQLCommand","details":{"sql": "'"$QUERY"'","session":{"id":{"$uuid":"'$sess_id'"}},"queryId":{"$uuid":"'$QUERY_UUID'"},"flattenResults":false,"packageSize":1}}' $CROSSDATA_SERVER/query/$QUERY_UUID)
+  fi
+
+  if [ "true" = "$VERBOSE" ]; then
+    echo $query_res
+  fi
 
   # Parse result
   if [ "$query_res" != null ]; then
